@@ -12,6 +12,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -53,12 +54,12 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     private Vibrator mVibrator;
     private NotifyLister mNotifyLister;
 //    private double latitude,longtitude;
-    private TextView positionText;
+//    private TextView positionText;
     private boolean isFirstLocate = true;
 
     // 界面控件相关
-    private EditText locationText;
-    private EditText nameText;
+    private String location;
+    private String nameText;
     private View mPop;
     private View mModify;
     EditText mdifyName;
@@ -96,43 +97,39 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     }
 
     public void initUI() {
-        locationText = (EditText) findViewById(R.id.pt);
-        nameText = (EditText) findViewById(R.id.name);
         LayoutInflater mInflater = getLayoutInflater();
         mPop = (View) mInflater.inflate(R.layout.activity_favorite_infowindow, null, false);
+        getAllClick();
     }
 
     /**
      * 添加收藏点
      *
-     * @param v
      */
-    public void saveClick(View v) {
-        if (nameText.getText().toString() == null || nameText.getText().toString().equals("")) {
+    public void saveClick() {
+        if (nameText == null || nameText.equals("")) {
             Toast.makeText(this, "名称必填", Toast.LENGTH_LONG)
                     .show();
             return;
         }
-        if (locationText.getText().toString() == null || locationText.getText().toString().equals("")) {
-            Toast.makeText(this, "坐标点必填", Toast.LENGTH_LONG)
-                    .show();
-            return;
-        }
+//        if (locationText.getText().toString() == null || locationText.getText().toString().equals("")) {
+//            Toast.makeText(this, "坐标点必填", Toast.LENGTH_LONG)
+//                    .show();
+//            return;
+//        }
 
         FavoritePoiInfo info = new FavoritePoiInfo();
-        info.poiName(nameText.getText().toString());
+        info.poiName(nameText);
 
         LatLng pt;
         try {
-            String strPt = locationText.getText().toString();
-            String lat = strPt.substring(0, strPt.indexOf(","));
-            String lng = strPt.substring(strPt.indexOf(",") + 1);
+            String lat = location.substring(0, location.indexOf(","));
+            String lng = location.substring(location.indexOf(",") + 1);
             double latitude = Double.parseDouble(lat);
             double longtitude = Double.parseDouble(lng);
             NotifyLister mNotifyListener = new NotifyLister();
             mNotifyListener.SetNotifyLocation(latitude,longtitude,300,mLocationClient.getLocOption().getCoorType());
             mLocationClient.registerNotify(mNotifyListener);
-            mLocationClient.start();
             pt = new LatLng(latitude, longtitude);
             info.pt(pt);
             if (FavoriteManager.getInstance().add(info) == 1) {
@@ -148,7 +145,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         }
 
         // 在地图上更新当前最新添加的点
-        mBaiduMap.clear();
+//        mBaiduMap.clear();
         List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
         if(null == list || list.size() == 0){
             return;
@@ -162,13 +159,45 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
     }
 
+    public void saveUI(){
+        LayoutInflater mInflater = getLayoutInflater();
+        mModify = (LinearLayout) mInflater.inflate(R.layout.activity_favorite_alert, null);
+        mdifyName = (EditText) mModify.findViewById(R.id.modifyedittext);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setView(mModify);
+        builder.setPositiveButton("确认", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                nameText = mdifyName.getText().toString();
+                if (nameText != null && !nameText.equals("")) {
+                    // modify
+//                    FavoritePoiInfo info = FavoriteManager.getInstance().getFavPoi(currentID);
+//                    info.poiName(nameText);
+//                    if (FavoriteManager.getInstance().updateFavPoi(currentID, info)) {
+//                        Toast.makeText(MainActivity.this , "添加成功", Toast.LENGTH_LONG).show();
+//                    }
+                    saveClick();
+                } else {
+                    Toast.makeText(MainActivity.this, "名称不能为空，操作失败", Toast.LENGTH_LONG).show();
+                }
+                dialog.dismiss();
+            }
+        });
+        builder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
+        builder.create().show();
+    }
     /**
      * 修改收藏点
      *
      * @param v
      */
     public void modifyClick(View v) {
-        mBaiduMap.hideInfoWindow();
+        //        mBaiduMap.hideInfoWindow();
         // 弹框修改
         LayoutInflater mInflater = getLayoutInflater();
         mModify = (LinearLayout) mInflater.inflate(R.layout.activity_favorite_alert, null);
@@ -200,8 +229,9 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
                     if (FavoriteManager.getInstance().updateFavPoi(currentID, info)) {
                         Toast.makeText(MainActivity.this , "修改成功", Toast.LENGTH_LONG).show();
                     }
+
                 } else {
-                    Toast.makeText(MainActivity.this, "名称不能为空，修改失败", Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this, "名称不能为空，操作失败", Toast.LENGTH_LONG).show();
                 }
                 dialog.dismiss();
             }
@@ -249,10 +279,8 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
     /**
      * 获取全部收藏点
-     *
-     * @param v
      */
-    public void getAllClick(View v) {
+    public void getAllClick() {
         mBaiduMap.clear();
         List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
         if (list == null || list.size() == 0) {
@@ -384,29 +412,6 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     public class MyLocationListener implements BDLocationListener {
         @Override
         public void onReceiveLocation(final BDLocation bdLocation) {
-//            runOnUiThread(new Runnable() {
-//                @Override
-//                public void run() {
-//                    StringBuilder currentPosition = new StringBuilder();
-//                    currentPosition.append("纬度：").append(bdLocation.getLatitude()).append("\n");
-//                    currentPosition.append("经度：").append(bdLocation.getLongitude()).append("\n");
-//                    currentPosition.append("国家：").append(bdLocation.getCountry()).append("\n");
-//                    currentPosition.append("省：").append(bdLocation.getProvince()).append("\n");
-//                    currentPosition.append("市：").append(bdLocation.getCity()).append("\n");
-//                    currentPosition.append("区：").append(bdLocation.getDistrict()).append("\n");
-//                    currentPosition.append("街道：").append(bdLocation.getStreet()).append("\n");
-//                    currentPosition.append("定位方式：");
-//                    if(bdLocation.getLocType() == BDLocation.TypeGpsLocation){
-//                        currentPosition.append("GPS");
-//                    }else if(bdLocation.getLocType() == BDLocation.TypeNetWorkLocation){
-//                        currentPosition.append("网络");
-//                    }
-//                    positionText.setText(currentPosition);
-//                }
-//            });
-//            latitude = bdLocation.getLatitude();
-//            longtitude = bdLocation.getLongitude();
-//            notifyHandler.sendEmptyMessage(0);
             if(bdLocation.getLocType() == BDLocation.TypeGpsLocation
                 || bdLocation.getLocType() == BDLocation.TypeNetWorkLocation){
                 navigateTo(bdLocation);
@@ -444,10 +449,11 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
     @Override
     public void onMapLongClick(LatLng point) {
-        locationText.setText(String.valueOf(point.latitude) + "," + String.valueOf(point.longitude));
+        location = String.valueOf(point.latitude) + "," + String.valueOf(point.longitude);
         MarkerOptions ooA = new MarkerOptions().position(point).icon(bdA);
-        mBaiduMap.clear();
+//        mBaiduMap.clear();
         mBaiduMap.addOverlay(ooA);
+        saveUI();
     }
 
     @Override
@@ -479,21 +485,20 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     public boolean onMapPoiClick(MapPoi poi) {
         return false;
     }
-//    private Handler notifyHandler = new Handler(){
-//
-//        @Override
-//        public void handleMessage(Message msg) {
-//            // TODO Auto-generated method stub
-//            super.handleMessage(msg);
-//            mNotifyLister.SetNotifyLocation(latitude,longtitude, 3000, mLocationClient.getLocOption().getCoorType());//4个参数代表要位置提醒的点的坐标，具体含义依次为：纬度，经度，距离范围，坐标系类型(gcj02,gps,bd09,bd09ll)
-//        }
-//
-//    };
 
     public class NotifyLister extends BDNotifyListener {
         public void onNotify(BDLocation mlocation, float distance){
             mVibrator.vibrate(1000);//振动提醒已到设定位置附近
             Toast.makeText(MainActivity.this, "震动提醒", Toast.LENGTH_SHORT).show();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if(obj instanceof  NotifyLister){
+                NotifyLister notifyLister = (NotifyLister)obj;
+                return this.mLatitude == notifyLister.mLatitude && this.mLongitude == notifyLister.mLongitude;
+            }
+            return false;
         }
     }
 

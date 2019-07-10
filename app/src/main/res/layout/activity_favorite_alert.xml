@@ -10,7 +10,7 @@
                         android:layout_weight="1.0"
                         android:layout_marginLeft="10dp"
                         android:onClick="modifyClick"
-                        android:text="修改名称："
+                        android:text="要做什么："
                         android:textAlignment="center" />
 
                     <EditText
@@ -23,11 +23,6 @@
 
                         <requestFocus />
                     </EditText>
-				
-			
-                
-      
-
 </LinearLayout>
 
     
