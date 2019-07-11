@@ -5,6 +5,10 @@ import android.app.AlertDialog;
 import android.app.Service;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.os.Build;
 import android.os.Vibrator;
 import android.support.annotation.NonNull;
@@ -16,6 +20,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
+import com.baidu.location.BDAbstractLocationListener;
 import com.baidu.location.BDLocation;
 import com.baidu.location.BDLocationListener;
 //import com.baidu.location.BDNotifyListener;
@@ -30,11 +35,13 @@ import com.baidu.mapapi.map.BitmapDescriptor;
 import com.baidu.mapapi.map.BitmapDescriptorFactory;
 import com.baidu.mapapi.map.InfoWindow;
 import com.baidu.mapapi.map.MapPoi;
+import com.baidu.mapapi.map.MapStatus;
 import com.baidu.mapapi.map.MapStatusUpdate;
 import com.baidu.mapapi.map.MapStatusUpdateFactory;
 import com.baidu.mapapi.map.MapView;
 import com.baidu.mapapi.map.Marker;
 import com.baidu.mapapi.map.MarkerOptions;
+import com.baidu.mapapi.map.MyLocationConfiguration;
 import com.baidu.mapapi.map.MyLocationData;
 import com.baidu.mapapi.model.LatLng;
 
@@ -42,7 +49,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLongClickListener,
-        BaiduMap.OnMarkerClickListener, BaiduMap.OnMapClickListener {
+        BaiduMap.OnMarkerClickListener, BaiduMap.OnMapClickListener , SensorEventListener {
 
     public LocationClient mLocationClient;
     private MapView mMapView;
@@ -54,7 +61,13 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     //    private double latitude,longtitude;
 //    private TextView positionText;
     private boolean isFirstLocate = true;
-
+    private SensorManager mSensorManager;
+    private Double lastX = 0.0;
+    private int mCurrentDirection = 0;
+    private double mCurrentLat = 0.0;
+    private double mCurrentLon = 0.0;
+    private float mCurrentAccracy;
+    private MyLocationData locData;
     // 界面控件相关
     private String location;
     private String nameText;
@@ -70,6 +83,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);//获取传感器管理服务
         mLocationClient = new LocationClient(getApplicationContext());
         mLocationClient.registerLocationListener(listener);
         SDKInitializer.initialize(getApplicationContext());
@@ -79,6 +93,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         mVibrator = (Vibrator) getApplicationContext().getSystemService(Service.VIBRATOR_SERVICE);
         mMapView = (MapView) findViewById(R.id.bmapView);
         mBaiduMap = mMapView.getMap();
+        mBaiduMap.setMyLocationConfiguration(new MyLocationConfiguration(MyLocationConfiguration.LocationMode.NORMAL,true,null));
         mBaiduMap.setOnMapLongClickListener(this);
         mBaiduMap.setOnMarkerClickListener(this);
         mBaiduMap.setOnMapClickListener(this);
@@ -87,25 +102,14 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         requestLocation();
 //        mNotifyLister = new NotifyListener();
 //        mLocationClient.registerNotify(mNotifyLister);
-        mLocationClient.start();
+//        mLocationClient.start();
         // 初始化收藏夹
         FavoriteManager.getInstance().init();
         //初始化提醒
-        registNotify();
         // 初始化UI
         initUI();
     }
 
-    public void registNotify(){
-        List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
-        if(list != null && list.size() != 0){
-            for(FavoritePoiInfo poiInfo:list){
-                NotifyListener mNotifyListener = new NotifyListener(poiInfo.getPt().latitude,
-                        poiInfo.getPt().longitude, 100, mLocationClient.getLocOption().getCoorType());
-                mLocationClient.registerNotify(mNotifyListener);
-            }
-        }
-    }
     public void initUI() {
         LayoutInflater mInflater = getLayoutInflater();
         mPop = (View) mInflater.inflate(R.layout.activity_favorite_infowindow, null, false);
@@ -136,11 +140,11 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             String lng = location.substring(location.indexOf(",") + 1);
             double latitude = Double.parseDouble(lat);
             double longtitude = Double.parseDouble(lng);
-            mLocationClient.registerNotify(new NotifyListener(latitude, longtitude, 100, mLocationClient.getLocOption().getCoorType()));
             pt = new LatLng(latitude, longtitude);
             info.pt(pt);
             if (FavoriteManager.getInstance().add(info) == 1) {
                 Toast.makeText(this, "添加成功", Toast.LENGTH_LONG).show();
+                mLocationClient.registerNotify(new NotifyListener(latitude, longtitude, 1, mLocationClient.getLocOption().getCoorType()));
                 MarkerOptions ooA = new MarkerOptions().position(pt).icon(bdA);
                 mBaiduMap.addOverlay(ooA);
             } else {
@@ -310,6 +314,8 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             b.putString("id", list.get(i).getID());
             option.extraInfo(b);
             markers.add((Marker) mBaiduMap.addOverlay(option));
+            mLocationClient.registerNotify(new NotifyListener(list.get(i).getPt().latitude,
+                    list.get(i).getPt().longitude, 100, mLocationClient.getLocOption().getCoorType()));
         }
 
     }
@@ -329,20 +335,24 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         }
     }
 
-    private void navigateTo(BDLocation location) {
-        if (isFirstLocate) {
-            LatLng ll = new LatLng(location.getLatitude(), location.getLongitude());
-            MapStatusUpdate update = MapStatusUpdateFactory.newLatLng(ll);
-            mBaiduMap.animateMapStatus(update);
-            update = MapStatusUpdateFactory.zoomTo(16f);
-            mBaiduMap.animateMapStatus(update);
-            isFirstLocate = false;
+    @Override
+    public void onSensorChanged(SensorEvent sensorEvent) {
+        double x = sensorEvent.values[SensorManager.DATA_X];
+        if (Math.abs(x - lastX) > 1.0) {
+            mCurrentDirection = (int) x;
+            locData = new MyLocationData.Builder()
+                    .accuracy(mCurrentAccracy)
+                    // 此处设置开发者获取到的方向信息，顺时针0-360
+                    .direction(mCurrentDirection).latitude(mCurrentLat)
+                    .longitude(mCurrentLon).build();
+            mBaiduMap.setMyLocationData(locData);
         }
-        MyLocationData.Builder locationBuilder = new MyLocationData.Builder();
-        locationBuilder.latitude(location.getLatitude());
-        locationBuilder.longitude(location.getLongitude());
-        MyLocationData locationData = locationBuilder.build();
-        mBaiduMap.setMyLocationData(locationData);
+        lastX = x;
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int i) {
+
     }
 
     private void requestLocation() {
@@ -389,9 +399,10 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
     private void initLocation() {
         LocationClientOption option = new LocationClientOption();
-        option.setScanSpan(5000);
         option.setIsNeedAddress(true);
         option.setCoorType("bd09ll");
+        option.setScanSpan(1000);
+        option.setOpenGps(true);
         mLocationClient.setLocOption(option);
     }
 
@@ -400,6 +411,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         super.onStop();
 //        mLocationClient.removeNotifyEvent(mNotifyLister);
 //        mLocationClient.unRegisterLocationListener(listener);
+        mSensorManager.unregisterListener(this);
         mLocationClient.stop();
     }
 
@@ -426,13 +438,37 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         }
     }
 
-    public class MyLocationListener implements BDLocationListener {
+    /**
+     * 定位SDK监听函数
+     */
+    public class MyLocationListener extends BDAbstractLocationListener {
+
         @Override
-        public void onReceiveLocation(final BDLocation bdLocation) {
-            if (bdLocation.getLocType() == BDLocation.TypeGpsLocation
-                    || bdLocation.getLocType() == BDLocation.TypeNetWorkLocation) {
-                navigateTo(bdLocation);
+        public void onReceiveLocation(BDLocation location) {
+            // map view 销毁后不在处理新接收的位置
+            if (location == null || mMapView == null) {
+                return;
             }
+            mCurrentLat = location.getLatitude();
+            mCurrentLon = location.getLongitude();
+            mCurrentAccracy = location.getRadius();
+            locData = new MyLocationData.Builder()
+                    .accuracy(location.getRadius())
+                    // 此处设置开发者获取到的方向信息，顺时针0-360
+                    .direction(mCurrentDirection).latitude(location.getLatitude())
+                    .longitude(location.getLongitude()).build();
+            mBaiduMap.setMyLocationData(locData);
+            if (isFirstLocate) {
+                isFirstLocate = false;
+                LatLng ll = new LatLng(location.getLatitude(),
+                        location.getLongitude());
+                MapStatus.Builder builder = new MapStatus.Builder();
+                builder.target(ll).zoom(18.0f);
+                mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
+            }
+        }
+
+        public void onReceivePoi(BDLocation poiLocation) {
         }
     }
 
@@ -448,6 +484,9 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         // MapView的生命周期与Activity同步，当activity恢复时需调用MapView.onResume()
         mMapView.onResume();
         super.onResume();
+        //为系统的方向传感器注册监听器
+        mSensorManager.registerListener(this, mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION),
+                SensorManager.SENSOR_DELAY_UI);
     }
 
     @Override
