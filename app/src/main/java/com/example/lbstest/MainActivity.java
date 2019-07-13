@@ -57,9 +57,6 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     private MyLocationListener listener = new MyLocationListener();
 
     private Vibrator mVibrator;
-//    private NotifyListener mNotifyLister;
-    //    private double latitude,longtitude;
-//    private TextView positionText;
     private boolean isFirstLocate = true;
     private SensorManager mSensorManager;
     private Double lastX = 0.0;
@@ -100,16 +97,23 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         mBaiduMap.setMyLocationEnabled(true);
         requestPermission();
         requestLocation();
-//        mNotifyLister = new NotifyListener();
-//        mLocationClient.registerNotify(mNotifyLister);
-//        mLocationClient.start();
-        // 初始化收藏夹
         FavoriteManager.getInstance().init();
         //初始化提醒
         // 初始化UI
+        registNotify();
         initUI();
     }
 
+    public void registNotify(){
+        List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
+        if (list == null || list.size() == 0) {
+            Toast.makeText(this, "没有收藏点", Toast.LENGTH_LONG).show();
+            return;
+        }
+        for(FavoritePoiInfo poiInfo:list){
+            mLocationClient.registerNotify(new NotifyListener(poiInfo.getPt().latitude,poiInfo.getPt().longitude,1,mLocationClient.getLocOption().coorType));
+        }
+    }
     public void initUI() {
         LayoutInflater mInflater = getLayoutInflater();
         mPop = (View) mInflater.inflate(R.layout.activity_favorite_infowindow, null, false);
@@ -125,12 +129,6 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
                     .show();
             return;
         }
-//        if (locationText.getText().toString() == null || locationText.getText().toString().equals("")) {
-//            Toast.makeText(this, "坐标点必填", Toast.LENGTH_LONG)
-//                    .show();
-//            return;
-//        }
-
         FavoritePoiInfo info = new FavoritePoiInfo();
         info.poiName(nameText);
 
@@ -144,7 +142,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             info.pt(pt);
             if (FavoriteManager.getInstance().add(info) == 1) {
                 Toast.makeText(this, "添加成功", Toast.LENGTH_LONG).show();
-                mLocationClient.registerNotify(new NotifyListener(latitude, longtitude, 1, mLocationClient.getLocOption().getCoorType()));
+                mLocationClient.registerNotify(new NotifyListener(latitude, longtitude, 100, mLocationClient.getLocOption().getCoorType()));
                 MarkerOptions ooA = new MarkerOptions().position(pt).icon(bdA);
                 mBaiduMap.addOverlay(ooA);
             } else {
@@ -158,7 +156,6 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         }
 
         // 在地图上更新当前最新添加的点
-//        mBaiduMap.clear();
         List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
         if (null == list || list.size() == 0) {
             return;
@@ -314,8 +311,6 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             b.putString("id", list.get(i).getID());
             option.extraInfo(b);
             markers.add((Marker) mBaiduMap.addOverlay(option));
-            mLocationClient.registerNotify(new NotifyListener(list.get(i).getPt().latitude,
-                    list.get(i).getPt().longitude, 100, mLocationClient.getLocOption().getCoorType()));
         }
 
     }
