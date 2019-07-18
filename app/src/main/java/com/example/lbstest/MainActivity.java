@@ -12,9 +12,17 @@ import android.hardware.SensorManager;
 import android.os.Build;
 import android.os.Vibrator;
 import android.support.annotation.NonNull;
+import android.support.annotation.RequiresApi;
+import android.support.design.widget.NavigationView;
+import android.support.v4.view.GravityCompat;
+import android.support.v4.widget.DrawerLayout;
+import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.Toolbar;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -22,7 +30,6 @@ import android.widget.Toast;
 
 import com.baidu.location.BDAbstractLocationListener;
 import com.baidu.location.BDLocation;
-import com.baidu.location.BDLocationListener;
 //import com.baidu.location.BDNotifyListener;
 import com.baidu.location.BDNotifyListener;
 import com.baidu.location.LocationClient;
@@ -36,7 +43,6 @@ import com.baidu.mapapi.map.BitmapDescriptorFactory;
 import com.baidu.mapapi.map.InfoWindow;
 import com.baidu.mapapi.map.MapPoi;
 import com.baidu.mapapi.map.MapStatus;
-import com.baidu.mapapi.map.MapStatusUpdate;
 import com.baidu.mapapi.map.MapStatusUpdateFactory;
 import com.baidu.mapapi.map.MapView;
 import com.baidu.mapapi.map.Marker;
@@ -48,6 +54,7 @@ import com.baidu.mapapi.model.LatLng;
 import java.util.ArrayList;
 import java.util.List;
 
+@RequiresApi(api = Build.VERSION_CODES.CUPCAKE)
 public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLongClickListener,
         BaiduMap.OnMarkerClickListener, BaiduMap.OnMapClickListener , SensorEventListener {
 
@@ -55,6 +62,9 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     private MapView mMapView;
     private BaiduMap mBaiduMap;
     private MyLocationListener listener = new MyLocationListener();
+    private DrawerLayout mDrawerLayout;
+    private NavigationView mNavigationView;
+    private Menu menu;
 
     private Vibrator mVibrator;
     private boolean isFirstLocate = true;
@@ -86,38 +96,68 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         SDKInitializer.initialize(getApplicationContext());
         setContentView(R.layout.activity_main);
         bdA = BitmapDescriptorFactory
-                .fromResource(R.drawable.icon_marka);
+                .fromResource(R.drawable.icon_gcoding);
         mVibrator = (Vibrator) getApplicationContext().getSystemService(Service.VIBRATOR_SERVICE);
         mMapView = (MapView) findViewById(R.id.bmapView);
+        mDrawerLayout = (DrawerLayout)findViewById(R.id.drawer_layout);
+        mNavigationView = (NavigationView)findViewById(R.id.navigation);
+        menu = mNavigationView.getMenu();
         mBaiduMap = mMapView.getMap();
         mBaiduMap.setMyLocationConfiguration(new MyLocationConfiguration(MyLocationConfiguration.LocationMode.NORMAL,true,null));
         mBaiduMap.setOnMapLongClickListener(this);
         mBaiduMap.setOnMarkerClickListener(this);
         mBaiduMap.setOnMapClickListener(this);
         mBaiduMap.setMyLocationEnabled(true);
+        setupDrawerContent(mNavigationView);
+        setupToolbar();
         requestPermission();
         requestLocation();
         FavoriteManager.getInstance().init();
         //初始化提醒
         // 初始化UI
-        registNotify();
+        regist();
         initUI();
     }
 
-    public void registNotify(){
+    public void regist(){
         List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
         if (list == null || list.size() == 0) {
             Toast.makeText(this, "没有收藏点", Toast.LENGTH_LONG).show();
             return;
         }
         for(FavoritePoiInfo poiInfo:list){
-            mLocationClient.registerNotify(new NotifyListener(poiInfo.getPt().latitude,poiInfo.getPt().longitude,1,mLocationClient.getLocOption().coorType));
+            mLocationClient.registerNotify(new NotifyListener(poiInfo.getPt().latitude,poiInfo.getPt().longitude,100,mLocationClient.getLocOption().coorType));
+            menu.add(poiInfo.getPoiName());
         }
     }
     public void initUI() {
         LayoutInflater mInflater = getLayoutInflater();
         mPop = (View) mInflater.inflate(R.layout.activity_favorite_infowindow, null, false);
         getAllClick();
+    }
+
+    private void setupDrawerContent(NavigationView navigationView) {
+
+        //setting up selected item listener
+        navigationView.setNavigationItemSelectedListener(
+                new NavigationView.OnNavigationItemSelectedListener() {
+                    @Override
+                    public boolean onNavigationItemSelected(MenuItem menuItem) {
+                        menuItem.setChecked(true);
+                        List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
+                        for(FavoritePoiInfo poiInfo:list){
+                            if(poiInfo.getPoiName().equals(menuItem.getTitle())){
+                                LatLng ll = new LatLng(poiInfo.getPt().latitude,
+                                        poiInfo.getPt().longitude);
+                                MapStatus.Builder builder = new MapStatus.Builder();
+                                builder.target(ll);
+                                mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
+                            }
+                        }
+                        mDrawerLayout.closeDrawers();
+                        return true;
+                    }
+                });
     }
 
     /**
@@ -160,6 +200,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         if (null == list || list.size() == 0) {
             return;
         }
+        menu.add(nameText);
         MarkerOptions option = new MarkerOptions().icon(bdA).position(list.get(0).getPt());
         Bundle b = new Bundle();
         b.putString("id", list.get(0).getID());
@@ -167,6 +208,15 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         Marker currentMarker = (Marker) mBaiduMap.addOverlay(option);
         markers.add(currentMarker);
 
+    }
+
+    private void setupToolbar() {
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+
+        final ActionBar ab = getSupportActionBar();
+        ab.setHomeAsUpIndicator(R.drawable.ic_menu);
+        ab.setDisplayHomeAsUpEnabled(true);
     }
 
     public void saveUI() {
@@ -227,7 +277,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             return;
         }
 
-        String oldName = FavoriteManager.getInstance().getFavPoi(currentID).getPoiName();
+        final String oldName = FavoriteManager.getInstance().getFavPoi(currentID).getPoiName();
         mdifyName.setText(oldName);
         builder.setPositiveButton("确认", new DialogInterface.OnClickListener() {
             @Override
@@ -237,7 +287,15 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
                     // modify
                     FavoritePoiInfo info = FavoriteManager.getInstance().getFavPoi(currentID);
                     info.poiName(newName);
+
                     if (FavoriteManager.getInstance().updateFavPoi(currentID, info)) {
+                        int num = menu.size();
+                        for(int i=0;i<num;i++){
+                            MenuItem item = menu.getItem(i);
+                            if(item.getTitle().equals(oldName)){
+                                item.setTitle(newName);
+                            }
+                        }
                         Toast.makeText(MainActivity.this, "修改成功", Toast.LENGTH_LONG).show();
                     }
 
@@ -274,6 +332,13 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         if (FavoriteManager.getInstance().getFavPoi(currentID) != null) {
             double latitude = FavoriteManager.getInstance().getFavPoi(currentID).getPt().latitude;
             double longtitude = FavoriteManager.getInstance().getFavPoi(currentID).getPt().longitude;
+            String title = FavoriteManager.getInstance().getFavPoi(currentID).getPoiName();
+            int num = menu.size();
+            for(int i=0;i<num;i++){
+                if(menu.getItem(i).getTitle().equals(title)){
+                    menu.removeItem(i);
+                }
+            }
             mLocationClient.removeNotifyEvent(new NotifyListener(latitude,longtitude,100,mLocationClient.getLocOption().coorType));
             Toast.makeText(this, "删除点成功", Toast.LENGTH_LONG).show();
             FavoriteManager.getInstance().deleteFavPoi(currentID);
@@ -315,20 +380,20 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
     }
 
-    /**
-     * 删除全部点
-     *
-     * @param v
-     */
-    public void deleteAllClick(View v) {
-        if (FavoriteManager.getInstance().clearAllFavPois()) {
-            Toast.makeText(this, "全部删除成功", Toast.LENGTH_LONG).show();
-            mBaiduMap.clear();
-            mBaiduMap.hideInfoWindow();
-        } else {
-            Toast.makeText(this, "全部删除失败", Toast.LENGTH_LONG).show();
-        }
-    }
+//    /**
+//     * 删除全部点
+//     *
+//     * @param v
+//     */
+//    public void deleteAllClick(View v) {
+//        if (FavoriteManager.getInstance().clearAllFavPois()) {
+//            Toast.makeText(this, "全部删除成功", Toast.LENGTH_LONG).show();
+//            mBaiduMap.clear();
+//            mBaiduMap.hideInfoWindow();
+//        } else {
+//            Toast.makeText(this, "全部删除失败", Toast.LENGTH_LONG).show();
+//        }
+//    }
 
     @Override
     public void onSensorChanged(SensorEvent sensorEvent) {
@@ -500,7 +565,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
     @Override
     public void onMapLongClick(LatLng point) {
-        location = String.valueOf(point.latitude) + "," + String.valueOf(point.longitude);
+        location = point.latitude + "," + point.longitude;
 //        MarkerOptions ooA = new MarkerOptions().position(point).icon(bdA);
 //        mBaiduMap.clear();
 //        mBaiduMap.addOverlay(ooA);
@@ -516,8 +581,6 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
         InfoWindow mInfoWindow = new InfoWindow(mPop, marker.getPosition(), -47);
         mBaiduMap.showInfoWindow(mInfoWindow);
-        MapStatusUpdate update = MapStatusUpdateFactory.newLatLng(marker.getPosition());
-        mBaiduMap.setMapStatus(update);
 
         if (null == marker.getExtraInfo()) {
             return false;
@@ -543,7 +606,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         }
         public void onNotify(BDLocation mlocation, float distance) {
             mVibrator.vibrate(1000);//振动提醒已到设定位置附近
-            Toast.makeText(MainActivity.this, "震动提醒", Toast.LENGTH_SHORT).show();
+            Toast.makeText(MainActivity.this, "到达目的地附近", Toast.LENGTH_SHORT).show();
         }
 
         @Override
@@ -554,6 +617,49 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             }
             return false;
         }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isNavDrawerOpen()) {
+            closeNavDrawer();
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    protected boolean isNavDrawerOpen() {
+        return mDrawerLayout != null && mDrawerLayout.isDrawerOpen(GravityCompat.START);
+    }
+
+    protected void closeNavDrawer() {
+        if (mDrawerLayout != null) {
+            mDrawerLayout.closeDrawer(GravityCompat.START);
+        }
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+
+        int id = item.getItemId();
+
+        switch (id) {
+
+            case android.R.id.home:
+                mDrawerLayout.openDrawer(GravityCompat.START);
+                return true;
+
+            case R.id.action_settings:
+                return true;
+        }
+
+        return super.onOptionsItemSelected(item);
     }
 
 }

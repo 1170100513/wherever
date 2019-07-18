@@ -34,14 +34,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name="schedule.Schdule"
-            android:launchMode="singleTask">
-        </activity>
-        <activity
-            android:name="schedule.NoteActivity"
-            android:launchMode="singleTask">
-        </activity>
 
         <service
             android:name="com.baidu.location.f"
