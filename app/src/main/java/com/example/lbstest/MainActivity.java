@@ -130,6 +130,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             menu.add(poiInfo.getPoiName());
         }
     }
+
     public void initUI() {
         LayoutInflater mInflater = getLayoutInflater();
         mPop = (View) mInflater.inflate(R.layout.activity_favorite_infowindow, null, false);
@@ -217,6 +218,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         final ActionBar ab = getSupportActionBar();
         ab.setHomeAsUpIndicator(R.drawable.ic_menu);
         ab.setDisplayHomeAsUpEnabled(true);
+        ab.setTitle("Wherever");
     }
 
     public void saveUI() {
@@ -337,6 +339,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             for(int i=0;i<num;i++){
                 if(menu.getItem(i).getTitle().equals(title)){
                     menu.removeItem(i);
+                    break;
                 }
             }
             mLocationClient.removeNotifyEvent(new NotifyListener(latitude,longtitude,100,mLocationClient.getLocOption().coorType));
@@ -565,11 +568,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
     @Override
     public void onMapLongClick(LatLng point) {
-        location = point.latitude + "," + point.longitude;
-//        MarkerOptions ooA = new MarkerOptions().position(point).icon(bdA);
-//        mBaiduMap.clear();
-//        mBaiduMap.addOverlay(ooA);
-        saveUI();
+
     }
 
     @Override
@@ -597,7 +596,9 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
     @Override
     public boolean onMapPoiClick(MapPoi poi) {
-        return false;
+        location = poi.getPosition().latitude + "," + poi.getPosition().longitude;
+        saveUI();
+        return true;
     }
 
     public class NotifyListener extends BDNotifyListener {
