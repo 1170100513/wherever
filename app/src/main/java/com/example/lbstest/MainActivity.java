@@ -2,9 +2,13 @@ package com.example.lbstest;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.Service;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
+import android.graphics.BitmapFactory;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -20,6 +24,7 @@ import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -50,22 +55,42 @@ import com.baidu.mapapi.map.MarkerOptions;
 import com.baidu.mapapi.map.MyLocationConfiguration;
 import com.baidu.mapapi.map.MyLocationData;
 import com.baidu.mapapi.model.LatLng;
+import com.baidu.mapapi.search.core.SearchResult;
+import com.baidu.mapapi.search.route.BikingRoutePlanOption;
+import com.baidu.mapapi.search.route.BikingRouteResult;
+import com.baidu.mapapi.search.route.DrivingRoutePlanOption;
+import com.baidu.mapapi.search.route.DrivingRouteResult;
+import com.baidu.mapapi.search.route.IndoorRouteResult;
+import com.baidu.mapapi.search.route.MassTransitRoutePlanOption;
+import com.baidu.mapapi.search.route.MassTransitRouteResult;
+import com.baidu.mapapi.search.route.OnGetRoutePlanResultListener;
+import com.baidu.mapapi.search.route.PlanNode;
+import com.baidu.mapapi.search.route.RoutePlanSearch;
+import com.baidu.mapapi.search.route.TransitRoutePlanOption;
+import com.baidu.mapapi.search.route.TransitRouteResult;
+import com.baidu.mapapi.search.route.WalkingRoutePlanOption;
+import com.baidu.mapapi.search.route.WalkingRouteResult;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import utils.WalkingRouteOverlay;
+
 @RequiresApi(api = Build.VERSION_CODES.CUPCAKE)
 public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLongClickListener,
-        BaiduMap.OnMarkerClickListener, BaiduMap.OnMapClickListener , SensorEventListener {
+        BaiduMap.OnMarkerClickListener, BaiduMap.OnMapClickListener, SensorEventListener, OnGetRoutePlanResultListener {
 
-    public LocationClient mLocationClient;
+    private LocationClient mLocationClient;
     private MapView mMapView;
     private BaiduMap mBaiduMap;
     private MyLocationListener listener = new MyLocationListener();
     private DrawerLayout mDrawerLayout;
     private NavigationView mNavigationView;
     private Menu menu;
+    private NotificationManager manager;
+    private RoutePlanSearch mSearch;    // 搜索模块，也可去掉地图模块独立使用
 
+    private boolean navigating = false;
     private Vibrator mVibrator;
     private boolean isFirstLocate = true;
     private SensorManager mSensorManager;
@@ -98,16 +123,20 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         bdA = BitmapDescriptorFactory
                 .fromResource(R.drawable.icon_gcoding);
         mVibrator = (Vibrator) getApplicationContext().getSystemService(Service.VIBRATOR_SERVICE);
+        manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        manager.createNotificationChannel(new NotificationChannel("hello", "wherever", NotificationManager.IMPORTANCE_DEFAULT));
         mMapView = (MapView) findViewById(R.id.bmapView);
-        mDrawerLayout = (DrawerLayout)findViewById(R.id.drawer_layout);
-        mNavigationView = (NavigationView)findViewById(R.id.navigation);
+        mDrawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
+        mNavigationView = (NavigationView) findViewById(R.id.navigation);
         menu = mNavigationView.getMenu();
         mBaiduMap = mMapView.getMap();
-        mBaiduMap.setMyLocationConfiguration(new MyLocationConfiguration(MyLocationConfiguration.LocationMode.NORMAL,true,null));
+        mBaiduMap.setMyLocationConfiguration(new MyLocationConfiguration(MyLocationConfiguration.LocationMode.NORMAL, true, null));
         mBaiduMap.setOnMapLongClickListener(this);
         mBaiduMap.setOnMarkerClickListener(this);
         mBaiduMap.setOnMapClickListener(this);
         mBaiduMap.setMyLocationEnabled(true);
+        mSearch = RoutePlanSearch.newInstance();
+        mSearch.setOnGetRoutePlanResultListener(this);
         setupDrawerContent(mNavigationView);
         setupToolbar();
         requestPermission();
@@ -119,14 +148,13 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         initUI();
     }
 
-    public void regist(){
+    public void regist() {
         List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
         if (list == null || list.size() == 0) {
-            Toast.makeText(this, "没有收藏点", Toast.LENGTH_LONG).show();
             return;
         }
-        for(FavoritePoiInfo poiInfo:list){
-            mLocationClient.registerNotify(new NotifyListener(poiInfo.getPt().latitude,poiInfo.getPt().longitude,100,mLocationClient.getLocOption().coorType));
+        for (FavoritePoiInfo poiInfo : list) {
+            mLocationClient.registerNotify(new NotifyListener(poiInfo.getPt().latitude, poiInfo.getPt().longitude, 100, mLocationClient.getLocOption().coorType));
             menu.add(poiInfo.getPoiName());
         }
     }
@@ -146,8 +174,8 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
                     public boolean onNavigationItemSelected(MenuItem menuItem) {
                         menuItem.setChecked(true);
                         List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
-                        for(FavoritePoiInfo poiInfo:list){
-                            if(poiInfo.getPoiName().equals(menuItem.getTitle())){
+                        for (FavoritePoiInfo poiInfo : list) {
+                            if (poiInfo.getPoiName().equals(menuItem.getTitle())) {
                                 LatLng ll = new LatLng(poiInfo.getPt().latitude,
                                         poiInfo.getPt().longitude);
                                 MapStatus.Builder builder = new MapStatus.Builder();
@@ -292,9 +320,9 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
 
                     if (FavoriteManager.getInstance().updateFavPoi(currentID, info)) {
                         int num = menu.size();
-                        for(int i=0;i<num;i++){
+                        for (int i = 0; i < num; i++) {
                             MenuItem item = menu.getItem(i);
-                            if(item.getTitle().equals(oldName)){
+                            if (item.getTitle().equals(oldName)) {
                                 item.setTitle(newName);
                             }
                         }
@@ -336,13 +364,13 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             double longtitude = FavoriteManager.getInstance().getFavPoi(currentID).getPt().longitude;
             String title = FavoriteManager.getInstance().getFavPoi(currentID).getPoiName();
             int num = menu.size();
-            for(int i=0;i<num;i++){
-                if(menu.getItem(i).getTitle().equals(title)){
+            for (int i = 0; i < num; i++) {
+                if (menu.getItem(i).getTitle().equals(title)) {
                     menu.removeItem(i);
                     break;
                 }
             }
-            mLocationClient.removeNotifyEvent(new NotifyListener(latitude,longtitude,100,mLocationClient.getLocOption().coorType));
+            mLocationClient.removeNotifyEvent(new NotifyListener(latitude, longtitude, 100, mLocationClient.getLocOption().coorType));
             Toast.makeText(this, "删除点成功", Toast.LENGTH_LONG).show();
             FavoriteManager.getInstance().deleteFavPoi(currentID);
             if (markers != null) {
@@ -368,7 +396,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         mBaiduMap.clear();
         List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
         if (list == null || list.size() == 0) {
-            Toast.makeText(this, "没有收藏点", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "没有待办哦", Toast.LENGTH_LONG).show();
             return;
         }
         // 绘制在地图
@@ -381,6 +409,28 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
             markers.add((Marker) mBaiduMap.addOverlay(option));
         }
 
+    }
+
+    /**
+     * 发起路线规划搜索示例
+     */
+    public void navigateClick(View v) {
+        mBaiduMap.hideInfoWindow();
+        // 处理搜索按钮响应
+        // 设置起终点信息，对于tranist search 来说，城市名无意义
+        if(!navigating){
+            LatLng start = new LatLng(mCurrentLat,mCurrentLon);
+            LatLng end = new LatLng(FavoriteManager.getInstance().getFavPoi(currentID).getPt().latitude,
+                    FavoriteManager.getInstance().getFavPoi(currentID).getPt().longitude);
+            PlanNode stNode = PlanNode.withLocation(start);
+            PlanNode edNode = PlanNode.withLocation(end);
+            mSearch.walkingSearch((new WalkingRoutePlanOption())
+                    .from(stNode).to(edNode));
+            navigating = true;
+        }else {
+            getAllClick();
+            navigating = false;
+        }
     }
 
 //    /**
@@ -501,6 +551,45 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         }
     }
 
+    @Override
+    public void onGetWalkingRouteResult(WalkingRouteResult walkingRouteResult) {
+        //创建WalkingRouteOverlay实例
+        WalkingRouteOverlay overlay = new WalkingRouteOverlay(mBaiduMap);
+        if (walkingRouteResult.getRouteLines().size() > 0) {
+            //获取路径规划数据,(以返回的第一条数据为例)
+            //为WalkingRouteOverlay实例设置路径数据
+            overlay.setData(walkingRouteResult.getRouteLines().get(0));
+            //在地图上绘制WalkingRouteOverlay
+            overlay.addToMap();
+        }
+
+    }
+
+    @Override
+    public void onGetTransitRouteResult(TransitRouteResult transitRouteResult) {
+
+    }
+
+    @Override
+    public void onGetMassTransitRouteResult(MassTransitRouteResult massTransitRouteResult) {
+
+    }
+
+    @Override
+    public void onGetDrivingRouteResult(DrivingRouteResult drivingRouteResult) {
+
+    }
+
+    @Override
+    public void onGetIndoorRouteResult(IndoorRouteResult indoorRouteResult) {
+
+    }
+
+    @Override
+    public void onGetBikingRouteResult(BikingRouteResult bikingRouteResult) {
+
+    }
+
     /**
      * 定位SDK监听函数
      */
@@ -562,6 +651,7 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
         // MapView的生命周期与Activity同步，当activity销毁时需调用MapView.destroy()
         mMapView.onDestroy();
         mBaiduMap = null;
+        mSearch.destroy();
         super.onDestroy();
     }
 
@@ -602,12 +692,27 @@ public class MainActivity extends AppCompatActivity implements BaiduMap.OnMapLon
     }
 
     public class NotifyListener extends BDNotifyListener {
-        NotifyListener(double latitude, double longtitude, float radius,String coor){
-            SetNotifyLocation(latitude,longtitude,radius,coor);
+        NotifyListener(double latitude, double longtitude, float radius, String coor) {
+            SetNotifyLocation(latitude, longtitude, radius, coor);
         }
+
         public void onNotify(BDLocation mlocation, float distance) {
-            mVibrator.vibrate(1000);//振动提醒已到设定位置附近
-            Toast.makeText(MainActivity.this, "到达目的地附近", Toast.LENGTH_SHORT).show();
+            List<FavoritePoiInfo> list = FavoriteManager.getInstance().getAllFavPois();
+            for (FavoritePoiInfo poiInfo : list) {
+                if (Math.abs(poiInfo.getPt().longitude - mlocation.getLongitude()) < 0.5 && Math.abs(poiInfo.getPt().latitude - mlocation.getLatitude()) < 0.5) {
+                    mVibrator.vibrate(1000);//振动提醒已到设定位置附近
+                    Toast.makeText(MainActivity.this, poiInfo.getPoiName(), Toast.LENGTH_SHORT).show();
+                    Notification notification = new Notification.Builder(MainActivity.this)
+                            .setChannelId("hello")
+                            .setContentTitle("到达目的点附近")
+                            .setContentText(poiInfo.getPoiName())
+                            .setWhen(System.currentTimeMillis())
+                            .setSmallIcon(R.mipmap.ic_launcher)
+                            .setLargeIcon(BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher))
+                            .build();
+                    manager.notify(1, notification);
+                }
+            }
         }
 
         @Override

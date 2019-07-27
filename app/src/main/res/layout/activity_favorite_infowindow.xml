@@ -23,4 +23,13 @@
           android:background= "@android:color/transparent"
           android:text="删除" />
 
+    <Button
+        android:id="@+id/how_to_go"
+        android:layout_width="50dip"
+        android:layout_height="40dip"
+        android:layout_weight="1.0"
+        android:onClick="navigateClick"
+        android:background= "@android:color/transparent"
+        android:text="导航" />
+
   </LinearLayout>
